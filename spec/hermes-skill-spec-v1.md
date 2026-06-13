@@ -270,3 +270,126 @@ owner_skill: hermes-agent
 - Correct: 认证用 `hermes auth`；provider 选 `hermes model`；初始化用 `hermes setup`
 - Check before answering: 核对 CLI reference 确认命令未被废弃
 ```
+
+---
+
+## 十一、v1.2 新增（2026-06-13 · 四方辩论裁决）
+
+> 消化自：Anthropic（信任判断力）+ MiniMax（工程硬度）+ Codex（安全裕度+作者模型）+ Claude Opus（范式选择）
+
+### 11.0 哲学立场
+
+本规范的根基是**协作范式**，不是命令范式。
+
+我们信任 agent 在运行时的判断力——决策树、协议层、Handoff、"不确定→查证"这些机制的存在前提就是对判断力的信任。但我们不天真到信任所有技能作者。所以：
+
+- **信任给 agent**：任务理解、路径选择、审美判断、用户意图适配
+- **不信任给系统层**：破坏性操作、真实性声明、外部副作用、安全边界、认证凭证
+
+> *"当你们为某条规则争论该用绝对语气还是条件 gate 时，本质上是在问'我们信任运行时的 agent 吗'——如果答案是不信任，那问题不在规则措辞，在于你们选错了协作范式。"* — Claude Opus
+
+### 11.1 系统级 Blocking Invariants
+
+以下规则是**系统级铁律**，不写在单个 SKILL.md 里，而是由 coordinator-workflow 的 intake-layer 统一执行。技能作者无权覆盖。
+
+| # | Invariant | 执行者 |
+|---|-----------|--------|
+| 1 | **真实性**：不得伪造执行结果。API 调用失败时必须报告失败，不得编造响应。 | coordinator |
+| 2 | **破坏性操作**：删除文件/目录/数据前必须确认或备份。 | coordinator |
+| 3 | **认证凭证**：缺少必要 API key 时必须停止，不得假装调用成功。 | coordinator |
+| 4 | **外部副作用**：生产环境变更、外部服务调用、发送消息前必须检查目标。 | coordinator |
+| 5 | **文件路径**：写入/覆盖文件前必须确认路径存在且可写。 | coordinator |
+| 6 | **机器消费格式**：子代理间交付、自动化评测、CI/CD 报告必须符合 schema。 | 子代理协议 |
+| 7 | **脚本执行**：来自技能的 `scripts/` 必须在确认来源后执行（不盲跑）。 | coordinator |
+| 8 | **冲突回退**：两个技能给出的指令冲突时，以系统级 invariant 为准，上报花生酱。 | coordinator |
+
+**反规则**：禁止将审美偏好、输出风格、流程习惯、句式模板写成 MUST。当所有规则都是 MUST，agent 就学会忽略 MUST。
+
+### 11.2 Contextual Pre-flight Gates
+
+Gate **不在技能里定义，而在 coordinator 路由时触发**。路由到某类任务 → 触发对应 gate。
+
+| 任务类型 | 触发条件 | Gate 检查项 | 失败处理 |
+|----------|----------|------------|----------|
+| 图像生成 | 路由到 `peanutbutter` 或调用 `image_generate` | provider 配置、模型可用性 | 提示用户配置 / 降级 curl |
+| API 调用 | 路由到任何含外部 API 的技能 | key 存在、endpoint 可达、quota 余量 | 停止 / 切换 provider |
+| 文件操作 | 路由到读写/删除文件任务 | 路径存在、权限可写、覆盖风险 | 询问确认 / 备份 |
+| 音视频处理 | 路由到含 ffmpeg/媒体处理 | ffmpeg 可用、输入文件存在 | 提示安装 / 跳过 |
+| 代码执行 | 路由到 `terminal` / `execute_code` | 工作目录存在、包管理器可识别 | 降级为纯分析 |
+| 部署操作 | 路由到 `deployment` 相关 | 目标环境可达、回滚方案存在 | 停止 / 要求确认 |
+
+**关键原则**：gate 是条件化的——只在相关任务触发时才检查。不存在"所有任务第一步都检查 venv/API key/ffmpeg"的全局 gate。
+
+### 11.3 状态缓存（State Caching）
+
+为 agent 提供带失效机制的短期工作记忆，减少重复探索。是系统基础设施，所有技能可调用。
+
+**缓存条目格式**：
+
+```json
+{
+  "key": "project.test_command",
+  "value": "npm test",
+  "source": "package.json scripts",
+  "verified_at": "2026-06-13T10:20:00Z",
+  "valid_until": "session",
+  "invalidates_when": ["package.json changes", "working directory changes"],
+  "confidence": 0.94
+}
+```
+
+**失效条件**（满足任一即失效）：
+- TTL 过期
+- 来源文件 hash 变化
+- 依赖版本变化
+- 会话切换
+- 用户显式否定
+
+**不允许**：无来源缓存、永久缓存、跨会话默认复用。
+
+### 11.4 Output Contract（仅机器交接）
+
+不强加 XML 格式。子代理间交付和自动化评测可使用结构化合约：
+
+```json
+{
+  "status": "success|failure|partial",
+  "summary": "一句话",
+  "artifacts": ["文件路径列表"],
+  "verification": "如何验证"
+}
+```
+
+用户-facing 回答不适用此格式。Done when 字段仍然是主要的完成定义。
+
+### 11.5 Concurrency Marking（轻量标注）
+
+技能可在执行步骤中标注并行/串行依赖：
+
+```text
+∥ Parallel:
+  - 读取 config.yaml
+  - 读取 .env
+  - 搜索文档
+
+→ Sequential:
+  - 安装依赖 only after 确认包管理器
+  - 运行测试 only after 安装完成
+```
+
+不强制。coordinator-workflow 已有隐式并行调度能力。
+
+### 11.6 明确拒绝清单
+
+以下 MiniMax 模式经四方辩论后**不予吸收**：
+
+| 拒绝 | 理由 |
+|------|------|
+| Universal Mandatory Compliance | 规则通胀摧毁 MUST 的可信度（Claude Opus 警告） |
+| Localization Layer 进核心 | 工具适配层，不是 agent 核心哲学 |
+| 全局 Pre-flight Gate | 无脑检查污染所有任务 |
+| 刚性 XML Output Contract 用于用户回答 | 格式主义，阅读体验差 |
+
+---
+
+*本规范将持续演进。每次吸收外部方法论时，先问："这是增强 agent 判断力，还是替代 agent 判断力？"——如果是后者，大概率不该要。*
