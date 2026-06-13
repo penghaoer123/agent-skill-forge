@@ -4,7 +4,7 @@ description: >
   Hermes 技能工程统一入口——新建规范技能、重构现有技能、审计评分、补协议层。
   当用户说"新建skill""创建技能""重构这个技能""这个skill太长了""拆分skill"
   "按规范改技能""给xxx加协议层""技能审计""skill review"时使用。
-  从第一行就遵循 ~/.hermes/docs/hermes-skill-refactoring-spec-v1.md。
+  从第一行就遵循 ~/.hermes/docs/hermes-skill-refactoring-spec-v1.md（含 v1.2 系统级 Blocking Invariants + Pre-flight Gates + State Caching）。
   不要在只是微调一句话（直接 patch）或为 Hermes Agent 仓库贡献技能（那个走 hermes-agent → references/skill-authoring.md）时加载。
 category: workflow
 tags: [skill-engineering, skill-refactoring, skill-creation, audit]
@@ -14,10 +14,11 @@ type: skill
 # Skill Refactor · 技能工程统一入口
 
 > 2026-06-13 建立 · 消化自 Anthropic Skills 方法论 + 内部审计 + Codex 审查
-> 2026-06-13 升级：纳入新建路径，从入口就规范
-> 依据规范：`~/.hermes/docs/hermes-skill-refactoring-spec-v1.md`
+| `references/scoring-checklist.md` | 执行 §A2 评分时 |
+| `references/design-philosophy.md` | 需要判断"硬 gate vs 信任判断"时——四学派对比与决策框架 |
+| `~/.hermes/docs/hermes-skill-refactoring-spec-v1.md` | 需要完整规范时 |
 
-## 协议层
+> 本技能已开源
 
 | 字段 | 内容 |
 |------|------|
@@ -72,10 +73,11 @@ type: skill
 
 # <标题>
 
-> YYYY-MM-DD 建立 · <一句话说明来源或目的>
-> 依据规范：`~/.hermes/docs/hermes-skill-refactoring-spec-v1.md`
+| `references/scoring-checklist.md` | 执行 §A2 评分时 |
+| `references/design-philosophy.md` | 需要判断"硬 gate vs 信任判断"时——四学派对比与决策框架 |
+| `~/.hermes/docs/hermes-skill-refactoring-spec-v1.md` | 需要完整规范时 |
 
-## 协议层
+> 本技能已开源
 
 | 字段 | 内容 |
 |------|------|
@@ -101,6 +103,15 @@ type: skill
 ## §核心流程
 
 <最小执行体，只写关键步骤。细节放 references。>
+
+```text
+∥ Parallel:（可并行的步骤）
+  - <步骤1>
+  - <步骤2>
+
+→ Sequential:（必须串行的步骤）
+  - <步骤3> only after <条件>
+```
 
 ## 参考文件索引
 
@@ -205,4 +216,8 @@ grep -c "入口决策" SKILL.md                               # ≥ 1
 | 文件 | 何时加载 |
 |------|----------|
 | `references/scoring-checklist.md` | 执行 §A2 评分时 |
+| `references/scoring-checklist.md` | 执行 §A2 评分时 |
+| `references/design-philosophy.md` | 需要判断"硬 gate vs 信任判断"时——四学派对比与决策框架 |
 | `~/.hermes/docs/hermes-skill-refactoring-spec-v1.md` | 需要完整规范时 |
+
+> 本技能已开源
